@@ -4,8 +4,8 @@ import requests
 import os
 
 # --- 設定項目 ---
-TOKEN = 'あなたのDISCORD_BOT_TOKEN'
-YT_API_KEY = 'あなたのYOUTUBE_API_KEY'
+TOKEN = 'MTQ2NzA5MTk1MjkzODc4Mjg2Mg.GQ11CT.daLt_Z4_dg62iS3dFesDZLmF9j2qVkXRiL4GDQ'
+YT_API_KEY = 'AIzaSyDdyBfVUr0tG17588sa8dQlOYdMVWDwibk'
 YT_CHANNEL_ID = 'UCfcm9lIrkZcEwRf5Tne6_Bg'
 
 class MyBot(discord.Client):
