@@ -22,8 +22,8 @@ def run_flask(): app.run(host='0.0.0.0', port=8080)
 TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
 YT_API_KEY = os.environ.get('YOUTUBE_API_KEY')
 YT_CHANNEL_ID = 'UCfcm9lIrkZcEwRf5Tne6_Bg'
-VC_ID = '1158354979313156111'
-GUILD_ID = 1158354979313156107 # あなたのサーバーID（数字）を入力してください
+VC_ID = '1172554718053158935'
+GUILD_ID = 1172554715641426000 # あなたのサーバーID（数字）を入力してください
 TIMEZONE = pytz.timezone('Asia/Tokyo')
 
 class MyBot(discord.Client):
