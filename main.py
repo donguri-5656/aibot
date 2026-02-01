@@ -5,83 +5,88 @@ import os
 import logging
 from flask import Flask
 from threading import Thread
-from datetime import datetime
+from datetime import datetime, timedelta
+import asyncio
 import pytz
 
-# ログの設定
 logging.basicConfig(level=logging.INFO)
 
-# --- Flask（GASからのアクセス受け取り用） ---
+# --- Flask (Keep Alive) ---
 app = Flask('')
 @app.route('/')
-def home():
-    return "Bot is alive!"
+def home(): return "Bot is alive!"
 
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-def keep_alive():
-    t = Thread(target=run_flask)
-    t.start()
-
-# --- 設定項目 ---
+# --- 設定 ---
 TOKEN = os.environ.get('DISCORD_BOT_TOKEN')
 YT_API_KEY = os.environ.get('YOUTUBE_API_KEY')
 YT_CHANNEL_ID = 'UCfcm9lIrkZcEwRf5Tne6_Bg'
 VC_ID = '1158354979313156111'
+GUILD_ID = 1158354979313156107 # あなたのサーバーID（数字）を入力してください
 TIMEZONE = pytz.timezone('Asia/Tokyo')
 
 class MyBot(discord.Client):
     async def on_ready(self):
         logging.info(f'Logged in as {self.user}')
-        # ループ処理を開始
-        if not self.update_status_loop.is_running():
-            self.update_status_loop.start()
-        if not self.update_vc_name_loop.is_running():
-            self.update_vc_name_loop.start()
+        if not self.main_loop.is_running():
+            self.main_loop.start()
 
-    # --- 15分ごとの処理：ステータス（プレイ中）の更新 ---
-    @tasks.loop(minutes=15)
-    async def update_status_loop(self):
-        try:
-            yt_url = f'https://www.googleapis.com/youtube/v3/channels?part=statistics&id={YT_CHANNEL_ID}&key={YT_API_KEY}'
-            res = requests.get(yt_url).json()
-            views = int(res['items'][0]['statistics']['viewCount'])
-            formatted_views = "{:,}".format(views)
-            
-            # 現在時刻を取得
-            now = datetime.now(TIMEZONE).strftime('%H:%M')
-            
-            # ステータス表示（説明文付き）
-            # 例：「総再生: 150,000回 (15分毎更新/14:30)」
-            status_text = f"総再生: {formatted_views}回 ({now}更新/15分毎)"
-            await self.change_presence(activity=discord.Game(name=status_text))
-            logging.info(f"Status Updated: {status_text}")
-        except Exception as e:
-            logging.error(f"Status Update Error: {e}")
+    # キリのいい時間（00分, 30分）まで待機する関数
+    async def wait_until_next_interval(self):
+        now = datetime.now(TIMEZONE)
+        if now.minute < 30:
+            target = now.replace(minute=30, second=0, microsecond=0)
+        else:
+            target = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        
+        wait_seconds = (target - now).total_seconds()
+        logging.info(f"Next update at {target.strftime('%H:%M')}. Waiting {wait_seconds} seconds.")
+        await asyncio.sleep(wait_seconds)
 
-    # --- 30分ごとの処理：ボイスチャンネル名の更新 ---
     @tasks.loop(minutes=30)
-    async def update_vc_name_loop(self):
+    async def main_loop(self):
+        # 最初の1回目だけ、キリのいい時間まで待つ
+        if not hasattr(self, 'first_run_done'):
+            await self.wait_until_next_interval()
+            self.first_run_done = True
+
         try:
+            # 1. YouTubeデータ取得
             yt_url = f'https://www.googleapis.com/youtube/v3/channels?part=statistics&id={YT_CHANNEL_ID}&key={YT_API_KEY}'
             res = requests.get(yt_url).json()
-            subs = int(res['items'][0]['statistics']['subscriberCount'])
-            formatted_subs = "{:,}".format(subs)
+            stats = res['items'][0]['statistics']
             
-            vc_name = f"👥 登録者: {formatted_subs}人"
-            discord_url = f"https://discord.com/api/v10/channels/{VC_ID}"
-            headers = {"Authorization": f"Bot {TOKEN}", "Content-Type": "application/json"}
+            views = "{:,}".format(int(stats['viewCount']))
+            subs = "{:,}".format(int(stats['subscriberCount']))
             
-            requests.patch(discord_url, headers=headers, json={"name": vc_name})
-            logging.info(f"VC Name Updated: {vc_name} (30分間隔)")
-        except Exception as e:
-            logging.error(f"VC Update Error: {e}")
+            # 2. サーバーでのニックネームを変更 (Botの名前を総再生数に)
+            guild = self.get_guild(GUILD_ID)
+            if guild:
+                try:
+                    await guild.me.edit(nick=f"総再生: {views}回")
+                    logging.info("Nickname updated.")
+                except Exception as e:
+                    logging.error(f"Nickname update failed: {e}")
 
-# インテント設定と実行
+            # 3. ボイスチャンネル名を更新
+            headers = {"Authorization": f"Bot {TOKEN}", "Content-Type": "application/json"}
+            requests.patch(f"https://discord.com/api/v10/channels/{VC_ID}", 
+                           headers=headers, json={"name": f"👥 登録者: {subs}人"})
+
+            # 4. ステータス（プレイ中）を更新
+            # 次回更新時刻を計算して表示
+            next_time = (datetime.now(TIMEZONE) + timedelta(minutes=30)).strftime('%H:%M')
+            status_text = f"次回更新: {next_time}頃 (30分毎)"
+            await self.change_presence(activity=discord.Game(name=status_text))
+
+        except Exception as e:
+            logging.error(f"Loop Error: {e}")
+
 intents = discord.Intents.default()
+intents.members = True # ニックネーム変更に必要
 client = MyBot(intents=intents)
 
-keep_alive()
+Thread(target=run_flask).start()
 if TOKEN:
     client.run(TOKEN)
