@@ -38,10 +38,9 @@ async def on_message(message):
 
         async with message.channel.typing():
             try:
-                # Hugging FaceのAIに計算を丸投げする（非同期で実行）
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
-                    None, lambda: hf_client.predict(prompt=prompt, api_name="/predict")
+                    None, lambda: hf_client.predict(prompt)
                 )
                 await message.channel.send(result)
             except Exception as e:
